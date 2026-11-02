@@ -1,0 +1,51 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    # Defaults to localhost:3309 (since user_db is mapped to host port 3309 to avoid conflict with local MySQL)
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3309}/user_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${DB_USER:appuser}
+    password: ${DB_PASSWORD:apppassword}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# JWT Security Configuration
+jwt:
+  # 256-bit secret key for HMAC-SHA256
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  # 24 hours in milliseconds (24 * 60 * 60 * 1000 = 86,400,000)
+  expiration: 86400000
+
+# Eureka Discovery Client Configuration
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_SERVER:localhost}:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+# Actuator Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+

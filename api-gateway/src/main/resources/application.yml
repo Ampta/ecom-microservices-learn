@@ -1,0 +1,99 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  # Redis Reactive Configuration for Rate Limiting
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redispassword}
+      timeout: 2000ms
+
+  cloud:
+    gateway:
+      # Enable service discovery locator for dynamic routes
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+      # Explicit Gateway Route Definitions
+      routes:
+        # ======================================================================
+        # 1. User Service Route (PUBLIC: Registration & Login)
+        # ======================================================================
+        - id: user-service-route
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            # Apply IP-based Rate Limiting to prevent brute-force attacks
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # ======================================================================
+        # 2. Product Service Route (SECURED: Requires Valid JWT)
+        # ======================================================================
+        - id: product-service-route
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/products/**
+          filters:
+            # Custom JWT Validation Filter
+            - name: JwtValidationFilter
+            # 10 req/sec IP-based Rate Limiter backed by Redis
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # ======================================================================
+        # 3. Order Service Route (SECURED: Requires Valid JWT)
+        # ======================================================================
+        - id: order-service-route
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/**
+          filters:
+            # Custom JWT Validation Filter
+            - name: JwtValidationFilter
+            # 10 req/sec IP-based Rate Limiter backed by Redis
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+# JWT Secret Configuration (matches User Service secret)
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+
+# Eureka Discovery Client Configuration
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_SERVER:localhost}:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+

@@ -1,0 +1,607 @@
+{
+  "info": {
+    "_postman_id": "7b8e5192-3a21-4f1b-9c74-8d4e12e8b091",
+    "name": "Enterprise Microservices E2E Test Suite",
+    "description": "Comprehensive End-to-End Postman Collection for testing Spring Boot 3 Microservices via Spring Cloud API Gateway (Port 8080).\n\nIncludes:\n- User Registration & Login\n- Automated JWT Token Extraction & Propagation\n- Product Management (Secured)\n- Order Processing with OpenFeign Inter-Service Communication\n- Resilience4j Circuit Breaker Fallback Testing\n- Redis Distributed Rate Limiting (10 req/s)\n- Security Verification (401 Unauthorized tests)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication (Public)",
+      "item": [
+        {
+          "name": "1.1 Register New User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Token is present in response\", function () {",
+                  "    pm.expect(jsonData.token).to.not.be.empty;",
+                  "});",
+                  "",
+                  "// Automatically save JWT token into collection variable",
+                  "pm.collectionVariables.set(\"jwt_token\", jsonData.token);",
+                  "console.log(\"Saved JWT token:\", jsonData.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"ROLE_USER\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Registers a new user in MySQL user_db and receives a signed 24h JWT token. Automatically saves the token to {{jwt_token}}."
+          }
+        },
+        {
+          "name": "1.2 Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Login successful with valid token\", function () {",
+                  "    pm.expect(jsonData.token).to.not.be.empty;",
+                  "    pm.expect(jsonData.email).to.eql(\"jane.doe@example.com\");",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set(\"jwt_token\", jsonData.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Authenticates against BCrypt hashed credentials and updates {{jwt_token}}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Product Catalog (Secured via Gateway)",
+      "item": [
+        {
+          "name": "2.1 Create Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Product ID generated\", function () {",
+                  "    pm.expect(jsonData.id).to.not.be.null;",
+                  "    pm.expect(jsonData.name).to.eql(\"MacBook Pro M3\");",
+                  "});",
+                  "",
+                  "// Save created product id for subsequent tests",
+                  "pm.collectionVariables.set(\"product_id\", jsonData.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"MacBook Pro M3\",\n  \"description\": \"16-inch, 36GB RAM, 1TB SSD Space Black\",\n  \"price\": 2499.99,\n  \"stockQuantity\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Creates a product in product_db. Requires valid JWT Bearer token."
+          }
+        },
+        {
+          "name": "2.2 Get Product By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Product details match\", function () {",
+                  "    pm.expect(jsonData.id).to.eql(parseInt(pm.collectionVariables.get(\"product_id\")));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products", "{{product_id}}"]
+            },
+            "description": "Retrieves product by ID."
+          }
+        },
+        {
+          "name": "2.3 Get All Products",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Products array returned\", function () {",
+                  "    pm.expect(jsonData).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Lists all catalog items."
+          }
+        },
+        {
+          "name": "2.4 Get Product - 404 Exception Handler Test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Error body contains clean JSON structure\", function () {",
+                  "    pm.expect(jsonData.error).to.eql(\"Not Found\");",
+                  "    pm.expect(jsonData.status).to.eql(404);",
+                  "    pm.expect(jsonData.message).to.include(\"Product not found\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products/99999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products", "99999"]
+            },
+            "description": "Verifies that @RestControllerAdvice converts ResourceNotFoundException to clean JSON 404."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Order Processing (Inter-Service JWT Propagation)",
+      "item": [
+        {
+          "name": "3.1 Create Order (Happy Path with Feign Call)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Order status is CREATED and totalPrice calculated\", function () {",
+                  "    pm.expect(jsonData.orderStatus).to.eql(\"CREATED\");",
+                  "    pm.expect(jsonData.totalPrice).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set(\"order_id\", jsonData.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"productId\": {{product_id}},\n  \"quantity\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Tests full end-to-end flow:\nGateway -> Order Service -> Feign RequestInterceptor attaches JWT -> Product Service -> Validates Stock -> Calculates Total -> Saves as CREATED."
+          }
+        },
+        {
+          "name": "3.2 Get Order By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Order details returned\", function () {",
+                  "    pm.expect(jsonData.id).to.eql(parseInt(pm.collectionVariables.get(\"order_id\")));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/{{order_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders", "{{order_id}}"]
+            },
+            "description": "Retrieves order status from order_db."
+          }
+        },
+        {
+          "name": "3.3 Get All Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Lists all recorded orders."
+          }
+        },
+        {
+          "name": "3.4 Create Order - Insufficient Stock Test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 503 or Failed status returned\", function () {",
+                  "    pm.expect([422, 503]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Order is marked as FAILED with reason\", function () {",
+                  "    pm.expect(jsonData.orderStatus).to.eql(\"FAILED\");",
+                  "    pm.expect(jsonData.failureReason).to.include(\"Insufficient stock\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"productId\": {{product_id}},\n  \"quantity\": 99999\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Verifies that ordering more units than stockQuantity records the order as FAILED."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Security & Fault Tolerance Tests",
+      "item": [
+        {
+          "name": "4.1 Security: Missing Authorization Header (Expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Gateway returns Missing Authorization error\", function () {",
+                  "    pm.expect(jsonData.error).to.eql(\"Unauthorized\");",
+                  "    pm.expect(jsonData.message).to.eql(\"Missing Authorization Header\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Tests that API Gateway's JwtValidationFilter immediately rejects unauthenticated calls."
+          }
+        },
+        {
+          "name": "4.2 Security: Invalid / Tampered Token (Expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Gateway detects invalid token\", function () {",
+                  "    pm.expect(jsonData.message).to.include(\"Invalid or Expired JWT\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer tampered.invalid.token.signature"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Tests HMAC-SHA256 signature verification in API Gateway."
+          }
+        },
+        {
+          "name": "4.3 Circuit Breaker: Order when Product Service is DOWN (Expect 503 Fallback)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 503 Service Unavailable\", function () {",
+                  "    pm.response.to.have.status(503);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Order marked FAILED by Circuit Breaker fallback\", function () {",
+                  "    pm.expect(jsonData.orderStatus).to.eql(\"FAILED\");",
+                  "    pm.expect(jsonData.failureReason).to.include(\"Product Service unavailable\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"productId\": 1,\n  \"quantity\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Run this after stopping product-service. Proves that Resilience4j triggers createOrderFallback."
+          }
+        },
+        {
+          "name": "4.4 Rate Limiting: Rapid Requests (Run via Collection Runner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 429) {",
+                  "    pm.test(\"Rate Limit Exceeded - 429 Too Many Requests detected\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(429);",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Request within rate limit - Status 200\", function () {",
+                  "        pm.expect(pm.response.code).to.eql(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Execute this in Postman Collection Runner with 30 iterations and 0ms delay to observe HTTP 429 responses."
+          }
+        }
+      ]
+    }
+  ]
+}
+
